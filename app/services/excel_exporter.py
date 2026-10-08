@@ -1,5 +1,6 @@
 """Write hotel search results and request details to an Excel workbook."""
 
+from io import BytesIO
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -23,6 +24,19 @@ def export_offers_to_excel(
         raise ValueError("The Excel report path must end with .xlsx.")
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    _create_workbook(offers, request).save(path)
+    return path
+
+
+def export_offers_to_excel_buffer(offers: list[HotelOffer], request: SearchRequest) -> BytesIO:
+    """Build an Excel workbook in memory for download responses."""
+    workbook_buffer = BytesIO()
+    _create_workbook(offers, request).save(workbook_buffer)
+    workbook_buffer.seek(0)
+    return workbook_buffer
+
+
+def _create_workbook(offers: list[HotelOffer], request: SearchRequest) -> Workbook:
     workbook = Workbook()
     offers_sheet = workbook.active
     offers_sheet.title = "Hotel offers"
@@ -73,8 +87,7 @@ def export_offers_to_excel(
         row[6].number_format = "0.000000"
         row[7].number_format = "0.000000"
 
-    workbook.save(path)
-    return path
+    return workbook
 
 
 def _format_header(sheet: Worksheet) -> None:
