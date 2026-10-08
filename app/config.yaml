@@ -1,0 +1,25 @@
+search:
+  destination: "Accra"
+  check_in: "2026-12-10"
+  check_out: "2026-12-15"
+
+guests:
+  adults: 2
+  children: 0
+  rooms: 1
+
+filters:
+  max_price: 150
+  currency: "USD"
+  min_rating: 8.0
+  free_cancellation: true
+
+  property_types:
+    - "Hotel"
+    - "Apartment"
+
+preferences:
+  sort_by: "price"
+
+booking:
+  require_confirmation: true

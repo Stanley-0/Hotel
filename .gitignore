@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Environment and local secrets
+.env
+*.env
+config.local.yaml
+
+# Editor files
+.vscode/
+.idea/
+
+# Generated output
+output/
+hotel_results.xlsx

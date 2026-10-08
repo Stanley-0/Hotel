@@ -1,0 +1,1 @@
+"""Authorized hotel provider implementations."""
