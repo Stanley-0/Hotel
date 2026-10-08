@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 import secrets
-import threading
 import time
-from collections import OrderedDict
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -32,10 +31,13 @@ CURRENCY_LABELS = (
     ("EUR", "Euro"),
     ("GBP", "British pound"),
 )
-RESULT_CACHE_TTL_SECONDS = 30 * 60
-RESULT_CACHE_LIMIT = 25
+SUPPORTED_CURRENCIES = {code for code, _ in CURRENCY_LABELS}
+RESULT_TTL_MS = 30 * 60 * 1000
+RESULT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{20,64}")
 MAX_CHILDREN = 8
 MAX_PRICE = 1_000_000
+MAX_EXPORT_OFFERS = 100
+MAX_EXPORT_TEXT_LENGTH = 1_000
 
 
 def _bounded_integer(value: Any, field: str, minimum: int, maximum: int) -> int:
@@ -53,18 +55,42 @@ def _bounded_integer(value: Any, field: str, minimum: int, maximum: int) -> int:
     return result
 
 
-def _optional_number(value: Any, field: str, maximum: float) -> float | None:
-    if value is None or value == "":
+def _bounded_number(
+    value: Any,
+    field: str,
+    minimum: float,
+    maximum: float,
+    *,
+    optional: bool = False,
+) -> float | None:
+    if optional and (value is None or value == ""):
         return None
     if isinstance(value, bool):
-        raise ValueError(f"{field} must be a number between 0 and {maximum:g}.")
+        raise ValueError(f"{field} must be a number between {minimum:g} and {maximum:g}.")
     try:
         number = float(value)
     except (TypeError, ValueError):
-        raise ValueError(f"{field} must be a number between 0 and {maximum:g}.") from None
-    if not math.isfinite(number) or number < 0 or number > maximum:
-        raise ValueError(f"{field} must be a number between 0 and {maximum:g}.")
+        raise ValueError(f"{field} must be a number between {minimum:g} and {maximum:g}.") from None
+    if not math.isfinite(number) or number < minimum or number > maximum:
+        raise ValueError(f"{field} must be a number between {minimum:g} and {maximum:g}.")
     return number
+
+
+def _optional_number(value: Any, field: str, maximum: float) -> float | None:
+    return _bounded_number(value, field, 0, maximum, optional=True)
+
+
+def _optional_text(value: Any, field: str, *, required: bool = False) -> str | None:
+    if value is None and not required:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be text.")
+    text = value.strip()
+    if required and not text:
+        raise ValueError(f"{field} is required.")
+    if len(text) > MAX_EXPORT_TEXT_LENGTH:
+        raise ValueError(f"{field} must be {MAX_EXPORT_TEXT_LENGTH} characters or fewer.")
+    return text or None
 
 
 def _parse_iso_date(value: Any, field: str) -> date:
@@ -105,6 +131,8 @@ def _offer_payload(offer: HotelOffer, nights: int) -> dict[str, Any]:
         "currency": offer.currency,
         "guest_rating": offer.guest_rating,
         "address": offer.address,
+        "latitude": offer.latitude,
+        "longitude": offer.longitude,
         "deep_link": _safe_external_url(offer.deep_link),
     }
 
@@ -134,16 +162,13 @@ def _parse_search_payload(payload: dict[str, Any]) -> tuple[SearchRequest, dict[
     raw_ages = payload.get("children_ages", [])
     if not isinstance(raw_ages, list) or len(raw_ages) > MAX_CHILDREN:
         raise ValueError(f"Enter ages for up to {MAX_CHILDREN} children.")
-    children_ages = [
-        _bounded_integer(age, "Child age", 0, 17)
-        for age in raw_ages
-    ]
+    children_ages = [_bounded_integer(age, "Child age", 0, 17) for age in raw_ages]
 
-    currency = payload.get("currency", "GHS")
-    if not isinstance(currency, str):
+    currency_value = payload.get("currency", "GHS")
+    if not isinstance(currency_value, str):
         raise ValueError("Choose a supported currency.")
-    currency = currency.upper()
-    if currency not in {code for code, _ in CURRENCY_LABELS}:
+    currency = currency_value.upper()
+    if currency not in SUPPORTED_CURRENCIES:
         raise ValueError("Choose a supported currency.")
 
     min_price = _optional_number(payload.get("min_price"), "Minimum price", MAX_PRICE)
@@ -165,8 +190,69 @@ def _parse_search_payload(payload: dict[str, Any]) -> tuple[SearchRequest, dict[
         "min_rating": min_rating,
         "headless": True,
     }
-    search_request = SearchRequest.from_mapping(search_values)
-    return search_request, search_values
+    return SearchRequest.from_mapping(search_values), search_values
+
+
+def _parse_export_payload(
+    payload: dict[str, Any],
+    expected_search_id: str,
+) -> tuple[SearchRequest, list[HotelOffer]]:
+    if payload.get("search_id") != expected_search_id:
+        raise ValueError("These results do not match the requested export.")
+
+    created_at_ms = payload.get("created_at_ms")
+    if isinstance(created_at_ms, bool) or not isinstance(created_at_ms, int):
+        raise ValueError("These results are incomplete. Run the search again to export them.")
+    age_ms = int(time.time() * 1000) - created_at_ms
+    if age_ms < -60_000 or age_ms > RESULT_TTL_MS:
+        raise ValueError("These results have expired. Run the search again to export them.")
+
+    raw_search = payload.get("search")
+    if not isinstance(raw_search, dict):
+        raise ValueError("Search details are missing. Run the search again to export results.")
+    search_request, _ = _parse_search_payload(raw_search)
+
+    raw_offers = payload.get("offers")
+    if not isinstance(raw_offers, list) or len(raw_offers) > MAX_EXPORT_OFFERS:
+        raise ValueError(f"The export must contain no more than {MAX_EXPORT_OFFERS} offers.")
+
+    offers: list[HotelOffer] = []
+    for item in raw_offers:
+        if not isinstance(item, dict):
+            raise ValueError("One of the hotel offers is invalid.")
+
+        hotel_name = _optional_text(item.get("hotel_name"), "Hotel name", required=True)
+        room_name = _optional_text(item.get("room_name"), "Room name") or "Best available room"
+        nightly_price = _bounded_number(
+            item.get("nightly_price"), "Nightly price", 0, MAX_PRICE
+        )
+        currency_value = item.get("currency")
+        if not isinstance(currency_value, str) or currency_value.upper() not in SUPPORTED_CURRENCIES:
+            raise ValueError("One of the hotel offers has an unsupported currency.")
+        guest_rating = _optional_number(item.get("guest_rating"), "Guest rating", 10)
+        address = _optional_text(item.get("address"), "Hotel address")
+        latitude = _bounded_number(
+            item.get("latitude"), "Latitude", -90, 90, optional=True
+        )
+        longitude = _bounded_number(
+            item.get("longitude"), "Longitude", -180, 180, optional=True
+        )
+
+        offers.append(
+            HotelOffer(
+                hotel_name=hotel_name,
+                room_name=room_name,
+                nightly_price=nightly_price,
+                currency=currency_value.upper(),
+                guest_rating=guest_rating,
+                deep_link=_safe_external_url(item.get("deep_link")),
+                address=address,
+                latitude=latitude,
+                longitude=longitude,
+            )
+        )
+
+    return search_request, offers
 
 
 def _read_settings(config_path: str | Path) -> dict[str, Any]:
@@ -191,7 +277,7 @@ def _page_defaults(settings: dict[str, Any]) -> dict[str, Any]:
         check_out = check_in + timedelta(days=5)
 
     currency = str(settings.get("currency", "GHS")).upper()
-    if currency not in {code for code, _ in CURRENCY_LABELS}:
+    if currency not in SUPPORTED_CURRENCIES:
         currency = "GHS"
     children_ages = settings.get("children_ages") or []
 
@@ -213,44 +299,13 @@ def create_app(
     provider_name: str | None = None,
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
-    app.config["MAX_CONTENT_LENGTH"] = 32 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
     app.config["HOTEL_CONFIG_PATH"] = Path(
         config_path or os.environ.get("HOTEL_CONFIG_PATH", PROJECT_ROOT / "config.yaml")
     )
     app.config["HOTEL_PROVIDER_OVERRIDE"] = (
         provider_name if provider_name is not None else os.environ.get("HOTEL_PROVIDER_OVERRIDE")
     )
-
-    result_cache: OrderedDict[str, tuple[float, SearchRequest, list[HotelOffer], str]] = OrderedDict()
-    cache_lock = threading.Lock()
-
-    def save_result(
-        search_request: SearchRequest,
-        offers: list[HotelOffer],
-        provider_name: str,
-    ) -> str:
-        now = time.monotonic()
-        search_id = secrets.token_urlsafe(18)
-        with cache_lock:
-            expired = [
-                key
-                for key, (created_at, _, _, _) in result_cache.items()
-                if now - created_at > RESULT_CACHE_TTL_SECONDS
-            ]
-            for key in expired:
-                result_cache.pop(key, None)
-            result_cache[search_id] = (now, search_request, offers, provider_name)
-            while len(result_cache) > RESULT_CACHE_LIMIT:
-                result_cache.popitem(last=False)
-        return search_id
-
-    def get_result(search_id: str) -> tuple[float, SearchRequest, list[HotelOffer], str] | None:
-        with cache_lock:
-            cached = result_cache.get(search_id)
-            if cached and time.monotonic() - cached[0] > RESULT_CACHE_TTL_SECONDS:
-                result_cache.pop(search_id, None)
-                return None
-            return cached
 
     @app.get("/")
     def home():
@@ -293,33 +348,44 @@ def create_app(
                 min_nightly_price=search_values["min_price"],
                 max_nightly_price=search_values["max_price"],
                 min_guest_rating=search_values["min_rating"],
-            )
+            )[:MAX_EXPORT_OFFERS]
         except ConfigError:
             LOGGER.exception("Hotel search configuration could not be loaded")
             return jsonify(error="The search configuration could not be loaded."), 503
         except ValueError as error:
             return jsonify(error=str(error)), 400
-        except (RuntimeError, WebDriverException) as error:
+        except WebDriverException:
+            LOGGER.exception("The Selenium browser could not complete the hotel search")
+            return jsonify(
+                error=(
+                    "The browser could not complete the Booking.com search. Check your local Chrome "
+                    "installation or Selenium remote browser settings, then try again."
+                )
+            ), 502
+        except RuntimeError as error:
             LOGGER.warning("Hotel search failed: %s", error)
             return jsonify(error=str(error)), 502
         except Exception:
             LOGGER.exception("Hotel search failed unexpectedly")
-            return jsonify(error="The search could not be completed. Check the configured provider and try again."), 502
+            return jsonify(
+                error="The search could not be completed. Check the configured provider and try again."
+            ), 502
 
-        search_id = save_result(search_request, offers, provider.name)
+        search_id = secrets.token_urlsafe(18)
         nights = (search_request.check_out - search_request.check_in).days
+        created_at_ms = int(time.time() * 1000)
         return jsonify(
             search_id=search_id,
             results_url=url_for("show_results", search_id=search_id),
+            created_at_ms=created_at_ms,
             provider=provider.name,
             is_sample=provider.name == "mock",
             search={
                 "destination": search_request.destination,
                 "check_in": search_request.check_in.isoformat(),
                 "check_out": search_request.check_out.isoformat(),
-                "nights": nights,
                 "adults": search_request.adults,
-                "children": search_request.children,
+                "children_ages": search_values["children_ages"],
                 "rooms": search_request.rooms,
                 "currency": search_request.currency,
             },
@@ -328,38 +394,27 @@ def create_app(
 
     @app.get("/results/<search_id>")
     def show_results(search_id: str):
-        cached = get_result(search_id)
-        if cached is None:
-            return render_template("results.html", expired=True), 404
+        return render_template("results.html", search_id=search_id)
 
-        _, search_request, offers, provider_name = cached
-        nights = (search_request.check_out - search_request.check_in).days
-        check_in = search_request.check_in
-        check_out = search_request.check_out
-        date_range = (
-            f"{check_in.strftime('%b')} {check_in.day} – "
-            f"{check_out.strftime('%b')} {check_out.day}, {check_out.year}"
-        )
-        return render_template(
-            "results.html",
-            expired=False,
-            search_id=search_id,
-            search=search_request,
-            search_dates=date_range,
-            nights=nights,
-            offers=[_offer_payload(offer, nights) for offer in offers],
-            provider_name=provider_name.replace("_", " "),
-            is_sample=provider_name == "mock",
-        )
-
-    @app.get("/api/search/<search_id>/export")
+    @app.post("/api/search/<search_id>/export")
     def export_search(search_id: str):
-        cached = get_result(search_id)
-        if cached is None:
-            return jsonify(error="These results have expired. Run the search again to export them."), 404
+        if not RESULT_ID_PATTERN.fullmatch(search_id):
+            return jsonify(error="These results are not available. Run the search again."), 404
+        if not request.is_json:
+            return jsonify(error="Send the search results as JSON."), 415
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify(error="Search results could not be read."), 400
 
-        _, search_request, offers, _ = cached
-        workbook = export_offers_to_excel_buffer(offers, search_request)
+        try:
+            search_request, offers = _parse_export_payload(payload, search_id)
+            workbook = export_offers_to_excel_buffer(offers, search_request)
+        except ValueError as error:
+            return jsonify(error=str(error)), 400
+        except Exception:
+            LOGGER.exception("Hotel results could not be exported")
+            return jsonify(error="The Excel file could not be created. Please try again."), 500
+
         return send_file(
             workbook,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
