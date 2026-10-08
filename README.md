@@ -1,6 +1,6 @@
 # Hotel Bot
 
-A small Python command-line hotel-search app configured for **Accra, Ghana**. By default it opens a local Chrome browser through Selenium and searches Booking.com's public results page with your chosen parameters.
+A Python hotel-search app with a Flask web interface and command-line workflow, configured for **Accra, Ghana**. The web app and CLI share the same search models, provider selection, filters, and Excel export service. The default browser provider searches Booking.com's public results page through local Chrome and Selenium.
 
 ## Important provider boundary
 
@@ -18,9 +18,12 @@ hotel_bot/
 │   ├── logging_config.py
 │   └── models.py
 ├── tests/
-├── search_parameters.py     # Edit your destination, guests, dates, and price range here
-├── config.yaml               # Accra defaults
-├── main.py
+├── search_parameters.py     # Shared fallback search defaults
+├── config.yaml               # Search and provider configuration
+├── main.py                   # Command-line entry point
+├── web_app.py                # Flask web entry point
+├── templates/                # Search and results pages
+├── static/                   # Styles, browser behavior, and artwork
 ├── requirements.txt
 └── .gitignore
 ```
@@ -46,7 +49,26 @@ hotel_bot/
 
 5. Choose the `.venv` Python interpreter from the VS Code status bar if prompted.
 
-## Run it
+## Run the web app
+
+The Flask interface uses the same provider, search validation, price/rating filters, and Excel exporter as the command-line app. After installing the requirements, start the server:
+
+```powershell
+py web_app.py
+```
+
+Open `http://localhost:3000`. Submit the search form to run the provider search; successful searches open a separate results page, where matching offers can be exported to Excel.
+
+For a predictable local demo without opening Chrome, use the clearly labeled sample provider:
+
+```powershell
+$env:HOTEL_PROVIDER_OVERRIDE = "mock"
+py web_app.py
+```
+
+Remove that environment variable before using the provider configured in `config.yaml`. The default Selenium provider requires local Chrome. Search shortlists are held in process memory for 30 minutes, so this setup is intended to run as one app process; results are cleared when the server restarts.
+
+## Run the CLI
 
 Run the local Selenium search:
 
@@ -86,12 +108,12 @@ py main.py --destination "Osu, Accra"
 
 ## Change your search parameters
 
-Open `search_parameters.py` and edit `SEARCH_PARAMETERS` before running the bot.
-This is the single place for destination, travel dates, adults, children, rooms,
-currency, and minimum/maximum nightly price. Add the age of each child to
+Edit the `search` section in `config.yaml` to set the destination, travel dates,
+guests, rooms, currency, and price or rating filters for both the web app and
+CLI. Values in this file override fallback values in `search_parameters.py`;
+CLI flags override the configured values. Add each child's age to
 `children_ages`, because Booking.com uses ages to return valid availability and
-prices. Set `min_price`, `max_price`, or
-`min_rating` to `None` to leave that filter off.
+prices. Set `min_price`, `max_price`, or `min_rating` to `None` to leave that filter off.
 
 Set `headless` to `False` (the default) so you can see the browser. If Booking.com
 shows a verification page, resolve it in a normal browser and retry; the bot will
@@ -125,4 +147,4 @@ Only do this after Booking.com (or an authorized integration partner) has provid
 
 ## Configuration
 
-`config.yaml` currently searches Accra from 10 to 15 December 2026 for two adults, one room, in Ghana cedi. Change the values under `search` to suit your use case.
+`config.yaml` currently searches Accra from 10 to 15 December 2026 for two adults, one room, in Ghana cedi. Its search settings are the shared defaults for the web app and CLI; `search_parameters.py` supplies fallback values when a setting is omitted.

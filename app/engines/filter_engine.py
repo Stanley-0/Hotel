@@ -11,5 +11,8 @@ def filter_offers(
         offer for offer in offers
         if (min_nightly_price is None or offer.nightly_price >= min_nightly_price)
         and (max_nightly_price is None or offer.nightly_price <= max_nightly_price)
-        and (min_guest_rating is None or offer.guest_rating >= min_guest_rating)
+        and (
+            min_guest_rating is None
+            or (offer.guest_rating is not None and offer.guest_rating >= min_guest_rating)
+        )
     ]

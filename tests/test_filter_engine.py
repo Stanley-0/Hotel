@@ -18,3 +18,10 @@ def test_filtering_by_minimum_price() -> None:
     ]
 
     assert filter_offers(offers, min_nightly_price=1000) == [offers[1]]
+
+
+def test_unrated_offer_is_kept_without_filter_and_excluded_by_minimum_rating() -> None:
+    offer = HotelOffer("A", "Room", 800, "GHS", None)
+
+    assert filter_offers([offer]) == [offer]
+    assert filter_offers([offer], min_guest_rating=7.0) == []

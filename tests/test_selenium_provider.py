@@ -19,6 +19,7 @@ def test_search_url_reflects_guest_and_date_parameters() -> None:
     assert "checkin=2026-12-10" in url
     assert "group_adults=2" in url
     assert "group_children=2" in url
+    assert "age=4&age=8" in url
     assert "no_rooms=1" in url
 
 

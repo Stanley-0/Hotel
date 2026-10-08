@@ -42,7 +42,7 @@ class HotelOffer:
     room_name: str
     nightly_price: float
     currency: str
-    guest_rating: float
+    guest_rating: float | None
     deep_link: str | None = None
     address: str | None = None
     latitude: float | None = None

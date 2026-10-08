@@ -44,7 +44,7 @@ def main() -> int:
     configure_logging()
     logger = logging.getLogger(__name__)
 
-    search_settings = {**(config.get("search") or {}), **SEARCH_PARAMETERS}
+    search_settings = {**SEARCH_PARAMETERS, **(config.get("search") or {})}
     request = SearchRequest.from_mapping(search_settings, destination=args.destination)
     config.data["booking_parameters"] = search_settings
     provider = create_provider(config)
@@ -98,9 +98,10 @@ def main() -> int:
 
     print(f"Found {len(offers)} offer(s) for {request.destination}:")
     for offer in offers:
+        rating = f"{offer.guest_rating:.1f}" if offer.guest_rating is not None else "unrated"
         print(
             f"- {offer.hotel_name}: {offer.currency} {offer.nightly_price:.2f}/night "
-            f"| rating {offer.guest_rating:.1f} | {offer.room_name}"
+            f"| rating {rating} | {offer.room_name}"
         )
         if offer.deep_link:
             print(f"  Details: {offer.deep_link}")

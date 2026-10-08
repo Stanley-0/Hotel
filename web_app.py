@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file, url_for
 from selenium.common.exceptions import WebDriverException
 
 from app.config import Config, ConfigError
@@ -171,7 +171,7 @@ def _parse_search_payload(payload: dict[str, Any]) -> tuple[SearchRequest, dict[
 
 def _read_settings(config_path: str | Path) -> dict[str, Any]:
     config = Config(config_path)
-    return {**(config.get("search") or {}), **SEARCH_PARAMETERS}
+    return {**SEARCH_PARAMETERS, **(config.get("search") or {})}
 
 
 def _page_defaults(settings: dict[str, Any]) -> dict[str, Any]:
@@ -273,8 +273,8 @@ def create_app(
             search_request, search_values = _parse_search_payload(payload)
             config = Config(app.config["HOTEL_CONFIG_PATH"])
             search_settings = {
-                **(config.get("search") or {}),
                 **SEARCH_PARAMETERS,
+                **(config.get("search") or {}),
                 **search_values,
             }
             config.data["booking_parameters"] = search_settings
@@ -310,6 +310,7 @@ def create_app(
         nights = (search_request.check_out - search_request.check_in).days
         return jsonify(
             search_id=search_id,
+            results_url=url_for("show_results", search_id=search_id),
             provider=provider.name,
             is_sample=provider.name == "mock",
             search={
@@ -379,6 +380,8 @@ def create_app(
             "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; "
             "script-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
         )
+        if request.endpoint in {"search", "show_results", "export_search"}:
+            response.headers["Cache-Control"] = "private, no-store"
         return response
 
     return app

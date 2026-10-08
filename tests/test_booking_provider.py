@@ -47,3 +47,17 @@ def test_booking_offer_converts_total_stay_price_to_nightly_price() -> None:
     assert offer.address == "1 River Road"
     assert offer.latitude == 5.6037
     assert offer.longitude == -0.187
+
+
+def test_booking_offer_keeps_missing_rating_unrated() -> None:
+    offer = BookingComProvider._to_offer(
+        {
+            "name": "Example Hotel",
+            "price": {"total": {"booker_currency": 1000}},
+            "currency": {"booker": "GHS"},
+        },
+        "GHS",
+        5,
+    )
+
+    assert offer.guest_rating is None

@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f4f0e6">
-    <meta name="description" content="Search and compare hotel stays in Accra. Explore nightly prices, guest ratings, and property details from your selected provider.">
-    <title>The Stay Edit — Hotel search for Accra</title>
+    <meta name="description" content="Search and compare hotel stays by nightly price, guest rating, and the details that matter for your destination.">
+    <title>The Stay Edit — Hotel search</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script src="{{ url_for('static', filename='app.js') }}" defer></script>
   </head>
@@ -13,7 +13,7 @@
     <a class="skip-link" href="#main">Skip to search</a>
     <header class="site-header">
       <div class="header-inner page-width">
-        <a class="brand" href="/" aria-label="The Stay Edit home">
+        <a class="brand" href="{{ url_for('home') }}" aria-label="The Stay Edit home">
           <span class="brand-mark" aria-hidden="true">s</span>
           <span class="brand-name">the stay edit</span>
         </a>
@@ -21,7 +21,7 @@
           <a href="#search">Find a stay</a>
           <a href="#about">How it works</a>
         </nav>
-        <div class="destination-tag"><span aria-hidden="true"></span> Accra, Ghana</div>
+        <div class="destination-tag"><span aria-hidden="true"></span> {{ defaults.destination }}</div>
       </div>
     </header>
 
@@ -29,7 +29,7 @@
       <section class="hero page-width" aria-labelledby="hero-title">
         <div class="hero-copy">
           <p class="eyebrow"><span class="eyebrow-rule" aria-hidden="true"></span> A more considered hotel search</p>
-          <h1 id="hero-title">Find your<br><em>stay in Accra.</em></h1>
+          <h1 id="hero-title">Find your<br><em>next stay.</em></h1>
           <p class="hero-description">Compare places to stay by price, guest rating, and the details that make a trip feel like yours.</p>
           <a class="text-link" href="#search">Start exploring <span aria-hidden="true">↘</span></a>
         </div>
@@ -56,7 +56,7 @@
         </div>
 
         <div class="search-card">
-          <form id="search-form" novalidate>
+          <form id="search-form" data-search-url="{{ url_for('search') }}" novalidate>
             <div class="primary-fields">
               <label class="field destination-field" for="destination">
                 <span class="field-label">Destination</span>
@@ -138,7 +138,7 @@
     <footer class="site-footer">
       <div class="page-width footer-inner">
         <span class="footer-brand">the stay edit</span>
-        <span>Thoughtful stays, starting in Accra.</span>
+        <span>Thoughtful stays, wherever you&apos;re headed.</span>
       </div>
     </footer>
   </body>

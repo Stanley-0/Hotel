@@ -101,15 +101,17 @@ form.addEventListener("submit", async (event) => {
   searchStatus.hidden = false;
 
   try {
-    const response = await fetch("/api/search", {
+    const response = await fetch(form.dataset.searchUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "The search could not be completed. Please try again.");
-    if (!data.search_id) throw new Error("Search results could not be opened. Please try again.");
-    window.location.assign(`/results/${encodeURIComponent(data.search_id)}`);
+    if (typeof data.results_url !== "string" || !data.results_url.startsWith("/")) {
+      throw new Error("Search results could not be opened. Please try again.");
+    }
+    window.location.assign(data.results_url);
   } catch (error) {
     searchStatus.hidden = true;
     searchStatus.classList.remove("is-loading");

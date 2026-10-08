@@ -27,16 +27,17 @@ class BookingComSeleniumProvider:
         self.headless = headless
 
     def build_search_url(self, request: SearchRequest) -> str:
-        query = {
+        query: dict[str, str | int | list[int]] = {
             "ss": request.destination,
             "checkin": request.check_in.isoformat(),
             "checkout": request.check_out.isoformat(),
             "group_adults": request.adults,
             "group_children": len(self.children_ages),
+            "age": self.children_ages,
             "no_rooms": request.rooms,
             "selected_currency": request.currency,
         }
-        return "https://www.booking.com/searchresults.html?" + urlencode(query)
+        return "https://www.booking.com/searchresults.html?" + urlencode(query, doseq=True)
 
     def search_hotels(self, request: SearchRequest) -> list[HotelOffer]:
         driver = self._create_driver()
@@ -112,7 +113,7 @@ class BookingComSeleniumProvider:
             room_name="Best available room",
             nightly_price=round(float(price_matches[-1].replace(",", "")) / nights, 2),
             currency=currency,
-            guest_rating=float(score_match.group()) if score_match else 0.0,
+            guest_rating=float(score_match.group()) if score_match else None,
             deep_link=deep_link,
             address=address,
             latitude=latitude,

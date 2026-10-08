@@ -1,7 +1,7 @@
-"""Hotel-search settings you can adjust before running ``py main.py``.
+"""Fallback hotel-search settings shared by the CLI and Flask web app.
 
-All prices are per night and use the currency set below. Leave ``children_ages``
-empty when no children are travelling.
+Values in ``config.yaml`` take precedence. Prices are per night and use the
+selected currency. Leave ``children_ages`` empty when no children are travelling.
 """
 
 SEARCH_PARAMETERS = {

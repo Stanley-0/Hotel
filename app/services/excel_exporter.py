@@ -61,7 +61,7 @@ def _create_workbook(offers: list[HotelOffer], request: SearchRequest) -> Workbo
                 offer.nightly_price,
                 round(offer.nightly_price * nights, 2),
                 offer.currency,
-                offer.guest_rating or None,
+                offer.guest_rating,
                 offer.address,
                 offer.latitude,
                 offer.longitude,

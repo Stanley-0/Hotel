@@ -105,7 +105,11 @@ class BookingComProvider:
         products = item.get("products") or []
         room_name = products[0].get("room", "Best available room") if products else "Best available room"
         name = item.get("name", item.get("accommodation_name", "Booking.com property"))
-        rating = item.get("review_score", item.get("rating", 0)) or 0
+        rating = item.get("review_score", item.get("rating"))
+        try:
+            guest_rating = float(rating) if rating not in (None, "") else None
+        except (TypeError, ValueError):
+            guest_rating = None
         location = item.get("location") or {}
         if not isinstance(location, dict):
             location = {}
@@ -124,7 +128,7 @@ class BookingComProvider:
             str(room_name),
             nightly_price,
             str(currency),
-            float(rating),
+            guest_rating,
             url,
             str(address) if address else None,
             float(latitude) if latitude is not None else None,
