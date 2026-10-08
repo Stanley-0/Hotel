@@ -66,7 +66,15 @@ $env:HOTEL_PROVIDER_OVERRIDE = "mock"
 py web_app.py
 ```
 
-Remove that environment variable before using the provider configured in `config.yaml`. The default Selenium provider requires local Chrome. Search shortlists are held in process memory for 30 minutes, so this setup is intended to run as one app process; results are cleared when the server restarts.
+Remove that environment variable before using the provider configured in `config.yaml`. The web search uses headless Chrome through Selenium. Install Chrome or Chromium on the machine running the app; Selenium Manager can obtain a compatible driver but does not install the browser.
+
+After a search finishes, the app opens a separate comparison-sheet page and automatically prepares an `.xlsx` download. The results are handed from the search page to the results page in the current browser tab and expire after 30 minutes. They are not stored as search history, and the results link is intended to be opened in the same tab that ran the search.
+
+### Run with a remote Selenium browser
+
+A serverless deployment such as Vercel does not include a local Chrome installation. To run the real Booking.com search there, configure `SELENIUM_REMOTE_URL` with the URL of a Selenium-compatible remote Chrome service, and keep any credentials in the deployment environment rather than in source control. The remote browser must be reachable from the app, and the function timeout must allow the search to finish. For local development, leave this variable unset to use installed Chrome.
+
+The Vercel Python entrypoint is configured in `pyproject.toml` as `web_app:app`. Booking.com may throttle or request human verification; this app stops rather than attempting to bypass it. Search only public results and follow Booking.com&apos;s terms and access rules.
 
 ## Run the CLI
 

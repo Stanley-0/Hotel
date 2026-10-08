@@ -140,3 +140,48 @@ class FakeMapElement:
 
     def get_attribute(self, name: str) -> str | None:
         return self.attributes.get(name)
+
+
+def test_create_driver_uses_remote_browser_when_configured(monkeypatch) -> None:
+    received: dict[str, object] = {}
+    remote_driver = object()
+
+    def fake_remote(*, command_executor: str, options):
+        received["command_executor"] = command_executor
+        received["options"] = options
+        return remote_driver
+
+    monkeypatch.setenv("SELENIUM_REMOTE_URL", "https://selenium.example.test/wd/hub")
+    monkeypatch.setattr(selenium_provider.webdriver, "Remote", fake_remote)
+
+    driver = BookingComSeleniumProvider(headless=True)._create_driver()
+
+    assert driver is remote_driver
+    assert received["command_executor"] == "https://selenium.example.test/wd/hub"
+    assert "--headless=new" in received["options"].arguments
+
+
+def test_no_results_page_returns_an_empty_list(monkeypatch) -> None:
+    request = SearchRequest.from_mapping({
+        "destination": "Kyoto",
+        "check_in": "2026-12-10",
+        "check_out": "2026-12-15",
+    })
+    driver = FakeDriver()
+    driver.page_source = "<html>No properties found for those dates.</html>"
+
+    class FakeWait:
+        def __init__(self, _driver, _timeout: int) -> None:
+            pass
+
+        def until(self, _condition):
+            from selenium.common.exceptions import TimeoutException
+
+            raise TimeoutException("no cards")
+
+    provider = BookingComSeleniumProvider()
+    monkeypatch.setattr(provider, "_create_driver", lambda: driver)
+    monkeypatch.setattr(selenium_provider, "WebDriverWait", FakeWait)
+
+    assert provider.search_hotels(request) == []
+    assert driver.closed

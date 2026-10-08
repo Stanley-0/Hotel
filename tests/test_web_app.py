@@ -36,7 +36,7 @@ def test_home_page_renders_the_hotel_search_form() -> None:
     assert b"accra-hotel-terrace.png" in response.data
 
 
-def test_mock_search_and_excel_download_work_end_to_end() -> None:
+def test_mock_search_results_page_and_excel_download_work_end_to_end() -> None:
     client = make_client()
     response = client.post("/api/search", json=make_search_payload())
 
@@ -48,12 +48,14 @@ def test_mock_search_and_excel_download_work_end_to_end() -> None:
     assert data["results_url"] == f"/results/{data['search_id']}"
 
     results = client.get(data["results_url"])
-    assert results.headers["Cache-Control"] == "private, no-store"
     assert results.status_code == 200
-    assert b"3 stays found" in results.data
-    assert b"Sample results from the local demo provider" in results.data
+    assert results.headers["Cache-Control"] == "private, no-store"
+    assert b"Your next stay" in results.data
+    assert b"spreadsheet-table" in results.data
+    assert b"results.js" in results.data
+    assert f'data-search-id="{data["search_id"]}"'.encode() in results.data
 
-    export = client.get(f"/api/search/{data['search_id']}/export")
+    export = client.post(f"/api/search/{data['search_id']}/export", json=data)
     assert export.status_code == 200
     assert export.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert export.data.startswith(b"PK")
@@ -117,3 +119,20 @@ def test_home_uses_configured_search_defaults(tmp_path) -> None:
     assert 'value="2030-03-11"' in page
     assert 'value="3"' in page
     assert '<option value="USD" selected>' in page
+
+
+def test_results_route_rejects_invalid_search_ids() -> None:
+    response = make_client().get("/results/not-a-valid-id")
+
+    assert response.status_code == 404
+
+
+def test_excel_export_rejects_mismatched_search_id() -> None:
+    client = make_client()
+    search = client.post("/api/search", json=make_search_payload()).get_json()
+    payload = {**search, "search_id": "different-search-id-with-valid-length"}
+
+    response = client.post(f"/api/search/{search['search_id']}/export", json=payload)
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "These results do not match the requested export."

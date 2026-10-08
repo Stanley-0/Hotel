@@ -6,12 +6,14 @@ other access controls. If Booking.com asks for human verification, it stops.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Final
 from urllib.parse import urlencode
 
 from selenium import webdriver
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as conditions
 from selenium.webdriver.support.ui import WebDriverWait
@@ -48,12 +50,15 @@ class BookingComSeleniumProvider:
             nights = (request.check_out - request.check_in).days
             last_stale_error = None
             for _ in range(3):
-                cards = WebDriverWait(driver, 20).until(
-                    conditions.presence_of_all_elements_located(
-                        (By.CSS_SELECTOR, '[data-testid="property-card"]')
-                    )
-                )
                 try:
+                    cards = WebDriverWait(driver, 20).until(
+                        conditions.presence_of_all_elements_located(
+                            (
+                                By.CSS_SELECTOR,
+                                '[data-testid="property-card"], [data-testid="property-card-container"]',
+                            )
+                        )
+                    )
                     offers = [
                         self._parse_card(card, request.currency, nights)
                         for card in cards
@@ -67,20 +72,42 @@ class BookingComSeleniumProvider:
             ) from last_stale_error
         except TimeoutException as error:
             self._raise_if_human_verification(driver)
-            raise RuntimeError("Booking.com results did not load within 20 seconds. Try again in the visible browser.") from error
+            if self._is_empty_results_page(driver):
+                return []
+            raise RuntimeError(
+                "Booking.com results did not load within 20 seconds. Check the destination and dates, then try again."
+            ) from error
         finally:
             driver.quit()
 
-    def _create_driver(self) -> webdriver.Chrome:
+    def _create_driver(self) -> WebDriver:
         options = webdriver.ChromeOptions()
         if self.headless:
             options.add_argument("--headless=new")
         options.add_argument("--disable-notifications")
-        options.add_argument("--start-maximized")
+        options.add_argument("--window-size=1440,1200")
+        options.add_argument("--disable-dev-shm-usage")
+        if os.name == "posix" and hasattr(os, "geteuid") and os.geteuid() == 0:
+            options.add_argument("--no-sandbox")
+
+        remote_url = os.environ.get("SELENIUM_REMOTE_URL", "").strip()
+        if remote_url:
+            return webdriver.Remote(command_executor=remote_url, options=options)
         return webdriver.Chrome(options=options)
 
     @staticmethod
-    def _raise_if_human_verification(driver: webdriver.Chrome) -> None:
+    def _is_empty_results_page(driver: WebDriver) -> bool:
+        page_text = driver.page_source.lower()
+        markers = (
+            "no properties found",
+            "no results found",
+            "we couldn't find any results",
+            "no accommodations available",
+        )
+        return any(marker in page_text for marker in markers)
+
+    @staticmethod
+    def _raise_if_human_verification(driver: WebDriver) -> None:
         page_text = driver.page_source.lower()
         markers = ("captcha", "verify you are human", "unusual traffic", "security check")
         if any(marker in page_text for marker in markers):
@@ -108,9 +135,10 @@ class BookingComSeleniumProvider:
         deep_link = links[0].get_attribute("href") if links else None
         address = text('[data-testid="address"]') or None
         latitude, longitude = BookingComSeleniumProvider._coordinates_from_card(card)
+        room_name = text('[data-testid="recommended-room-name"]') or "Room details on Booking.com"
         return HotelOffer(
             hotel_name=hotel_name,
-            room_name="Best available room",
+            room_name=room_name,
             nightly_price=round(float(price_matches[-1].replace(",", "")) / nights, 2),
             currency=currency,
             guest_rating=float(score_match.group()) if score_match else None,

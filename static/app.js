@@ -108,10 +108,35 @@ form.addEventListener("submit", async (event) => {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "The search could not be completed. Please try again.");
-    if (typeof data.results_url !== "string" || !data.results_url.startsWith("/")) {
+    if (
+      typeof data.search_id !== "string" ||
+      !/^[A-Za-z0-9_-]{20,64}$/.test(data.search_id) ||
+      !Array.isArray(data.offers) ||
+      !data.search ||
+      typeof data.search !== "object"
+    ) {
+      throw new Error("The search returned incomplete results. Please try again.");
+    }
+
+    const resultsUrl = new URL(data.results_url, window.location.origin);
+    if (
+      resultsUrl.origin !== window.location.origin ||
+      !resultsUrl.pathname.startsWith("/results/") ||
+      !resultsUrl.pathname.endsWith(data.search_id)
+    ) {
       throw new Error("Search results could not be opened. Please try again.");
     }
-    window.location.assign(data.results_url);
+
+    try {
+      sessionStorage.setItem(
+        `hotel-search-results:${data.search_id}`,
+        JSON.stringify({ ...data, auto_download: true }),
+      );
+    } catch {
+      throw new Error("Your browser could not keep these results for the next page. Enable session storage and try again.");
+    }
+
+    window.location.assign(resultsUrl.pathname);
   } catch (error) {
     searchStatus.hidden = true;
     searchStatus.classList.remove("is-loading");

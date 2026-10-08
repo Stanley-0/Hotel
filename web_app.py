@@ -394,7 +394,12 @@ def create_app(
 
     @app.get("/results/<search_id>")
     def show_results(search_id: str):
-        return render_template("results.html", search_id=search_id)
+        is_valid_search_id = bool(RESULT_ID_PATTERN.fullmatch(search_id))
+        return render_template(
+            "results.html",
+            search_id=search_id,
+            is_valid_search_id=is_valid_search_id,
+        ), 200 if is_valid_search_id else 404
 
     @app.post("/api/search/<search_id>/export")
     def export_search(search_id: str):
