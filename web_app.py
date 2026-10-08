@@ -10,6 +10,7 @@ from collections import OrderedDict
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template, request, send_file
 from selenium.common.exceptions import WebDriverException
@@ -76,6 +77,36 @@ def _parse_iso_date(value: Any, field: str) -> date:
     if parsed.isoformat() != value:
         raise ValueError(f"{field} must be a valid date.")
     return parsed
+
+
+def _safe_external_url(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    candidate = value.strip()
+    if any(ord(character) < 32 for character in candidate):
+        return None
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError:
+        return None
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return None
+    if parsed.username is not None or parsed.password is not None:
+        return None
+    return candidate
+
+
+def _offer_payload(offer: HotelOffer, nights: int) -> dict[str, Any]:
+    return {
+        "hotel_name": offer.hotel_name,
+        "room_name": offer.room_name,
+        "nightly_price": offer.nightly_price,
+        "total_price": round(offer.nightly_price * nights, 2),
+        "currency": offer.currency,
+        "guest_rating": offer.guest_rating,
+        "address": offer.address,
+        "deep_link": _safe_external_url(offer.deep_link),
+    }
 
 
 def _parse_search_payload(payload: dict[str, Any]) -> tuple[SearchRequest, dict[str, Any]]:
@@ -190,24 +221,36 @@ def create_app(
         provider_name if provider_name is not None else os.environ.get("HOTEL_PROVIDER_OVERRIDE")
     )
 
-    result_cache: OrderedDict[str, tuple[float, SearchRequest, list[HotelOffer]]] = OrderedDict()
+    result_cache: OrderedDict[str, tuple[float, SearchRequest, list[HotelOffer], str]] = OrderedDict()
     cache_lock = threading.Lock()
 
-    def save_result(search_request: SearchRequest, offers: list[HotelOffer]) -> str:
+    def save_result(
+        search_request: SearchRequest,
+        offers: list[HotelOffer],
+        provider_name: str,
+    ) -> str:
         now = time.monotonic()
         search_id = secrets.token_urlsafe(18)
         with cache_lock:
             expired = [
                 key
-                for key, (created_at, _, _) in result_cache.items()
+                for key, (created_at, _, _, _) in result_cache.items()
                 if now - created_at > RESULT_CACHE_TTL_SECONDS
             ]
             for key in expired:
                 result_cache.pop(key, None)
-            result_cache[search_id] = (now, search_request, offers)
+            result_cache[search_id] = (now, search_request, offers, provider_name)
             while len(result_cache) > RESULT_CACHE_LIMIT:
                 result_cache.popitem(last=False)
         return search_id
+
+    def get_result(search_id: str) -> tuple[float, SearchRequest, list[HotelOffer], str] | None:
+        with cache_lock:
+            cached = result_cache.get(search_id)
+            if cached and time.monotonic() - cached[0] > RESULT_CACHE_TTL_SECONDS:
+                result_cache.pop(search_id, None)
+                return None
+            return cached
 
     @app.get("/")
     def home():
@@ -263,7 +306,7 @@ def create_app(
             LOGGER.exception("Hotel search failed unexpectedly")
             return jsonify(error="The search could not be completed. Check the configured provider and try again."), 502
 
-        search_id = save_result(search_request, offers)
+        search_id = save_result(search_request, offers, provider.name)
         nights = (search_request.check_out - search_request.check_in).days
         return jsonify(
             search_id=search_id,
@@ -279,32 +322,42 @@ def create_app(
                 "rooms": search_request.rooms,
                 "currency": search_request.currency,
             },
-            offers=[
-                {
-                    "hotel_name": offer.hotel_name,
-                    "room_name": offer.room_name,
-                    "nightly_price": offer.nightly_price,
-                    "total_price": round(offer.nightly_price * nights, 2),
-                    "currency": offer.currency,
-                    "guest_rating": offer.guest_rating,
-                    "address": offer.address,
-                    "deep_link": offer.deep_link,
-                }
-                for offer in offers
-            ],
+            offers=[_offer_payload(offer, nights) for offer in offers],
+        )
+
+    @app.get("/results/<search_id>")
+    def show_results(search_id: str):
+        cached = get_result(search_id)
+        if cached is None:
+            return render_template("results.html", expired=True), 404
+
+        _, search_request, offers, provider_name = cached
+        nights = (search_request.check_out - search_request.check_in).days
+        check_in = search_request.check_in
+        check_out = search_request.check_out
+        date_range = (
+            f"{check_in.strftime('%b')} {check_in.day} – "
+            f"{check_out.strftime('%b')} {check_out.day}, {check_out.year}"
+        )
+        return render_template(
+            "results.html",
+            expired=False,
+            search_id=search_id,
+            search=search_request,
+            search_dates=date_range,
+            nights=nights,
+            offers=[_offer_payload(offer, nights) for offer in offers],
+            provider_name=provider_name.replace("_", " "),
+            is_sample=provider_name == "mock",
         )
 
     @app.get("/api/search/<search_id>/export")
     def export_search(search_id: str):
-        with cache_lock:
-            cached = result_cache.get(search_id)
-            if cached and time.monotonic() - cached[0] > RESULT_CACHE_TTL_SECONDS:
-                result_cache.pop(search_id, None)
-                cached = None
+        cached = get_result(search_id)
         if cached is None:
             return jsonify(error="These results have expired. Run the search again to export them."), 404
 
-        _, search_request, offers = cached
+        _, search_request, offers, _ = cached
         workbook = export_offers_to_excel_buffer(offers, search_request)
         return send_file(
             workbook,

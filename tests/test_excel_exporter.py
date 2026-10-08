@@ -2,7 +2,7 @@ import pytest
 from openpyxl import load_workbook
 
 from app.models import HotelOffer, SearchRequest
-from app.services.excel_exporter import export_offers_to_excel
+from app.services.excel_exporter import export_offers_to_excel, export_offers_to_excel_buffer
 
 
 def make_request() -> SearchRequest:
@@ -91,3 +91,14 @@ def test_exports_empty_results_with_headers_and_creates_parent_directory(tmp_pat
 def test_rejects_non_xlsx_path(tmp_path) -> None:
     with pytest.raises(ValueError, match="must end with \\.xlsx"):
         export_offers_to_excel([], make_request(), tmp_path / "results.csv")
+
+
+def test_exports_to_an_in_memory_buffer() -> None:
+    output = export_offers_to_excel_buffer(
+        [HotelOffer("River House", "Garden room", 800, "GHS", 8.7)],
+        make_request(),
+    )
+
+    workbook = load_workbook(output, data_only=True)
+    assert workbook["Hotel offers"]["A2"].value == "River House"
+    assert workbook["Hotel offers"]["C2"].value == 4000

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f0e6">
+    <meta name="description" content="Search and compare hotel stays in Accra. Explore nightly prices, guest ratings, and property details from your selected provider.">
+    <title>The Stay Edit — Hotel search for Accra</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to search</a>
+    <header class="site-header">
+      <div class="header-inner page-width">
+        <a class="brand" href="/" aria-label="The Stay Edit home">
+          <span class="brand-mark" aria-hidden="true">s</span>
+          <span class="brand-name">the stay edit</span>
+        </a>
+        <nav class="header-nav" aria-label="Main navigation">
+          <a href="#search">Find a stay</a>
+          <a href="#about">How it works</a>
+        </nav>
+        <div class="destination-tag"><span aria-hidden="true"></span> Accra, Ghana</div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero page-width" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-rule" aria-hidden="true"></span> A more considered hotel search</p>
+          <h1 id="hero-title">Find your<br><em>stay in Accra.</em></h1>
+          <p class="hero-description">Compare places to stay by price, guest rating, and the details that make a trip feel like yours.</p>
+          <a class="text-link" href="#search">Start exploring <span aria-hidden="true">↘</span></a>
+        </div>
+        <div class="hero-visual">
+          <img
+            src="{{ url_for('static', filename='accra-hotel-terrace.png') }}"
+            alt="Sunlit terracotta hotel terrace with tropical plants, outdoor seating, and a small pool"
+            fetchpriority="high"
+          >
+          <div class="photo-note">
+            <span class="photo-note-mark" aria-hidden="true"></span>
+            <span><span class="photo-note-kicker">A little inspiration</span><strong>Take the scenic route.</strong></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="search-section page-width" id="search" aria-labelledby="search-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Make it your own</p>
+            <h2 id="search-title">Where are you staying?</h2>
+          </div>
+          <p class="section-aside">A few details help us find the right fit.</p>
+        </div>
+
+        <div class="search-card">
+          <form id="search-form" novalidate>
+            <div class="primary-fields">
+              <label class="field destination-field" for="destination">
+                <span class="field-label">Destination</span>
+                <input id="destination" name="destination" type="text" maxlength="120" autocomplete="address-level2" value="{{ defaults.destination }}" required>
+              </label>
+              <label class="field" for="check-in">
+                <span class="field-label">Check-in</span>
+                <input id="check-in" name="check_in" type="date" min="{{ defaults.today }}" value="{{ defaults.check_in }}" required>
+              </label>
+              <label class="field" for="check-out">
+                <span class="field-label">Check-out</span>
+                <input id="check-out" name="check_out" type="date" min="{{ defaults.today }}" value="{{ defaults.check_out }}" required>
+              </label>
+            </div>
+
+            <div class="field-divider"><span>Guests &amp; rooms</span></div>
+            <div class="guest-fields">
+              <label class="field" for="adults">
+                <span class="field-label">Adults</span>
+                <input id="adults" name="adults" type="number" min="1" max="20" step="1" value="{{ defaults.adults }}" required>
+              </label>
+              <label class="field" for="rooms">
+                <span class="field-label">Rooms</span>
+                <input id="rooms" name="rooms" type="number" min="1" max="10" step="1" value="{{ defaults.rooms }}" required>
+              </label>
+              <label class="field children-field" for="children-ages">
+                <span class="field-label">Children&apos;s ages <span class="optional-label">optional</span></span>
+                <input id="children-ages" name="children_ages" type="text" inputmode="numeric" placeholder="e.g. 5, 8" value="{{ defaults.children_ages }}" aria-describedby="children-hint">
+                <span class="field-hint" id="children-hint">Separate ages with commas, up to 8 children.</span>
+              </label>
+              <label class="field" for="currency">
+                <span class="field-label">Currency</span>
+                <select id="currency" name="currency">
+                  {% for code, label in currencies %}
+                    <option value="{{ code }}" {% if defaults.currency == code %}selected{% endif %}>{{ code }} — {{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+
+            <div class="field-divider"><span>Refine your search</span></div>
+            <div class="filter-fields">
+              <label class="field" for="min-price">
+                <span class="field-label">Min. per night</span>
+                <input id="min-price" name="min_price" type="number" min="0" max="1000000" step="any" inputmode="decimal" placeholder="No minimum">
+              </label>
+              <label class="field" for="max-price">
+                <span class="field-label">Max. per night</span>
+                <input id="max-price" name="max_price" type="number" min="0" max="1000000" step="any" inputmode="decimal" placeholder="No maximum">
+              </label>
+              <label class="field" for="min-rating">
+                <span class="field-label">Guest rating from</span>
+                <input id="min-rating" name="min_rating" type="number" min="0" max="10" step="0.1" inputmode="decimal" placeholder="Any rating">
+              </label>
+            </div>
+
+            <div class="form-footer">
+              <p class="form-note">Compare options first. You&apos;ll book directly with the provider.</p>
+              <button class="button button-primary" id="search-button" type="submit">
+                <span id="search-button-label">Find stays</span><span class="button-arrow" aria-hidden="true">↗</span>
+              </button>
+            </div>
+            <p class="form-error" id="search-error" role="alert" aria-live="assertive"></p>
+          </form>
+          <p class="search-status" id="search-status" role="status" aria-live="polite" hidden></p>
+        </div>
+      </section>
+
+      <section class="about-section page-width" id="about" aria-labelledby="about-title">
+        <div class="about-mark" aria-hidden="true">01</div>
+        <div>
+          <p class="eyebrow">A clearer way to compare</p>
+          <h2 id="about-title">Good trips start with a good shortlist.</h2>
+        </div>
+        <p class="about-copy">Search with your dates and preferences, then compare the options side by side. Prices and availability come from the selected provider and can change. This tool helps you search; it doesn&apos;t take bookings.</p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="page-width footer-inner">
+        <span class="footer-brand">the stay edit</span>
+        <span>Thoughtful stays, starting in Accra.</span>
+      </div>
+    </footer>
+  </body>
+</html>
+
+---FILE-END---
