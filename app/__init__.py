@@ -1,1 +1,0 @@
-"""Hotel bot application package."""

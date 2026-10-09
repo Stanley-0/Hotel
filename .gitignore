@@ -7,13 +7,13 @@ venv/
 
 # Environment and local secrets
 .env
+.env*.local
 *.env
-config.local.yaml
+.vercel/
 
 # Editor files
 .vscode/
 .idea/
 
 # Generated output
-output/
-hotel_results.xlsx
+*.csv
