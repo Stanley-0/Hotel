@@ -12,30 +12,50 @@ Columns are sortable and the table can be downloaded as CSV.
 ## Project layout
 
 ```text
+run.py               One-command local start (installs deps, opens the browser)
 scraper.py           Selenium bot (also usable from the command line)
 server.py            Flask server: serves the page and POST /api/search
 templates/index.html The one-page UI
 static/              CSS, JS and favicon
+Dockerfile           Image with Chromium bundled, for hosting online
+render.yaml          One-click deploy to Render
 tests/               pytest suite
 ```
 
-## Setup
+## Run it on your computer
 
-Requires Python 3.10+ and Google Chrome. Selenium 4 downloads the matching ChromeDriver automatically.
-
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Run the website
+Requires Python 3.10+ and Google Chrome.
 
 ```bash
-python server.py
+python run.py
 ```
 
-Open http://localhost:5000. Set `SHOW_BROWSER=1` to watch Chrome while it scrapes, and `PORT` to change the port.
+That installs anything missing, starts the server and opens http://localhost:5000 in your browser.
+
+**In VS Code:** open the folder, pick a Python interpreter (`Ctrl+Shift+P` → *Python: Select Interpreter*), then press **F5** and choose **Run Staysheet (web app)**.
+
+Optional: create a virtual environment first with `python -m venv .venv` and activate it (Windows: `.venv\Scripts\activate`, macOS/Linux: `source .venv/bin/activate`). Set `SHOW_BROWSER=1` to watch Chrome while it scrapes, and `PORT` to change the port.
+
+## Put it online
+
+Selenium needs a real Chrome browser on the server, so this app can't run on serverless hosts like Vercel or Netlify. It runs on any host that supports Docker; the image ships with Chromium.
+
+**Render (free tier):**
+
+1. Push this repo to GitHub.
+2. In Render, choose **New → Blueprint** and select the repo. It reads `render.yaml` and builds the `Dockerfile`.
+3. When the deploy finishes, open the `https://staysheet-….onrender.com` URL.
+
+**Railway / Fly.io / any VPS:** deploy the `Dockerfile` as-is. The container listens on `$PORT` (default 8000).
+
+**Test the container locally:**
+
+```bash
+docker build -t staysheet .
+docker run -p 8000:8000 staysheet
+```
+
+Notes for hosted use: free plans sleep when idle, so the first request can be slow. Booking.com is more likely to show a CAPTCHA to datacenter IPs than to your home connection; if that happens, the page shows a message instead of results.
 
 ## Run the bot from the terminal
 

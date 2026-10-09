@@ -12,6 +12,7 @@ Run it from the terminal:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import time
 from dataclasses import asdict, dataclass
@@ -139,7 +140,16 @@ def _create_driver(headless: bool):
     options.add_argument("--lang=en-US")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    return webdriver.Chrome(options=options)
+    options.add_argument("--disable-gpu")
+
+    # Set by the Docker image, which ships Debian's Chromium instead of Google Chrome.
+    chrome_bin = os.environ.get("CHROME_BIN")
+    if chrome_bin:
+        options.binary_location = chrome_bin
+    driver_path = os.environ.get("CHROMEDRIVER_PATH")
+    service = webdriver.ChromeService(executable_path=driver_path) if driver_path else None
+
+    return webdriver.Chrome(options=options, service=service)
 
 
 def _dismiss_cookie_banner(driver) -> None:

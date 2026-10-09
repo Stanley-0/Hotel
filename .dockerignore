@@ -1,0 +1,9 @@
+.git
+.venv
+.vercel
+.vscode
+.pytest_cache
+__pycache__
+*.pyc
+.env*
+tests

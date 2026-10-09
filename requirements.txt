@@ -1,5 +1,8 @@
 Flask>=3.0,<4.0
 selenium>=4.20,<5.0
 
+# Production server used when hosted online (not needed on Windows)
+gunicorn>=22.0; platform_system != "Windows"
+
 # Tests
 pytest>=8.0,<9.0
